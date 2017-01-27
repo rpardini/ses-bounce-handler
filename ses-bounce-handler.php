@@ -22,6 +22,7 @@ $command->flag('mongo')->alias("mongoHost")->alias("mongoDbHost")->describedAs("
 $command->flag('bounces')->alias("bouncesCollection")->describedAs("The MongoDB collection that will store all complaints and bounces in their full form. Defaults to 'bounces'.")->defaultsTo("bounces");
 $command->flag('banned')->alias("bannedCollection")->describedAs("The MongoDB collection that will store banned addresses with unique key on email. Defaults to 'banned'.")->defaultsTo("banned");
 $command->flag('mongoDatabase')->alias("db")->describedAs("The MongoDB database name to use. Defaults to 'mailbounces'.")->defaultsTo("mailbounces");
+$command->flag('quiet')->alias("cron")->describedAs("Try to be very silent, not logging anything unless there's an error.")->boolean()->defaultsTo(false);
 
 
 $sqsReqion = $command['region'];
@@ -33,10 +34,16 @@ $mongoDbBouncesCollection = $command['bounces'];
 $mongoDbBannedCollection = $command['banned'];
 $mongoDbDb = $command['mongoDatabase'];
 $runMode = strtolower($command['mode']);
+$logQuiet = $command['quiet'];
 
 // If any options are missing, Commando will have thrown an Exception above.
 $log = new Logger('ses-bounce-handler');
-$log->pushHandler(new StreamHandler('php://stdout', Logger::DEBUG));
+$consoleHandler = new StreamHandler('php://stdout', Logger::DEBUG);
+if ($logQuiet) {
+    $log->pushHandler(new \Monolog\Handler\FingersCrossedHandler($consoleHandler, Logger::WARNING));
+} else {
+    $log->pushHandler($consoleHandler);
+}
 $log->debug("Running with parameters", array($command->getFlagValues()));
 
 $newBans = 0;

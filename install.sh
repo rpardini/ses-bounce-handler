@@ -29,7 +29,7 @@ cat << EOD > /etc/cron.d/ses-bounce-handler
 # /etc/cron.d/ses-bounce-handler - crontab fragment for running ses-bounce-handler.
 # this contains authentication info, set it below before uncommenting
 
-# */5 * * * * root /usr/bin/php /opt/ses-bounce-handler/ses-bounce-handler.php --region "REGION" --access "ACCESS_KEY" --secret "SECRET_KEY" --mailDomain "MAIL_DOMAIN" --mongoDbHost "MONGO_SERVER_IP"
+# */5 * * * * root /usr/bin/php /opt/ses-bounce-handler/ses-bounce-handler.php --region "REGION" --access "ACCESS_KEY" --secret "SECRET_KEY" --mailDomain "MAIL_DOMAIN" --mongoDbHost "MONGO_SERVER_IP" --cron
 EOD
 echo "**CONFIGURE SETTINGS AND UNCOMMENT IN /etc/cron.d/ses-bounce-handler**"
 fi
