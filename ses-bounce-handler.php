@@ -218,7 +218,7 @@ function getMessagesFromSQS($sqsReqion, $sqsAccessKey, $sqsSecretKey, $mailDomai
 
                             foreach ($recipients as $recipient) {
                                 $rcptEmail = $recipient->getEmailAddress();
-                                $log->info("Will ban recipient with timestamp.", array('timestamp' => $parsedTS, 'email' => $rcptEmail));
+                                $log->warn("Will ban recipient with timestamp.", array('timestamp' => $parsedTS, 'email' => $rcptEmail, 'reason' => $reason));
                                 $docToInsert = array('email' => $rcptEmail, 'timestamp' => new \MongoDB\BSON\UTCDatetime($parsedTS), 'reason' => $reason);
 
                                 $upsert = $bannedCollection->updateOne(['email' => $rcptEmail], ['$set' => $docToInsert], ['upsert' => true]);
