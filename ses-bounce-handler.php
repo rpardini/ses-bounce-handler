@@ -4,7 +4,6 @@ require dirname(__FILE__) . '/vendor/autoload.php';
 
 date_default_timezone_set('UTC');
 use Aws\Sqs\SqsClient;
-use markdunphy\SesSnsTypes\Notification\MessageTypeFactory;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
 
@@ -80,6 +79,8 @@ function updatePostfixDBFromMongo($log, $mongoDbHost, $mongoDbDb, $mongoDbBanned
         /** @var \MongoDB\BSON\UTCDatetime $timestamp */
         $timestamp = $ban['timestamp'];
         $reason = $ban['reason'];
+        /** @noinspection PhpVoidFunctionResultUsedInspection */
+        /** @noinspection PhpUndefinedMethodInspection */
         $record = "{$email} discard:BANNED {$reason} at {$timestamp->toDateTime()->format('Y-m-d H:i:s')}";
         $records[] = $record;
     }
@@ -113,7 +114,7 @@ function updatePostfixDBFromMongo($log, $mongoDbHost, $mongoDbDb, $mongoDbBanned
  */
 function getMessagesFromSQS($sqsReqion, $sqsAccessKey, $sqsSecretKey, $mailDomain, $log, $mongoDbHost, $mongoDbDb, $mongoDbBouncesCollection, $mongoDbBannedCollection)
 {
-    $messageTypeFactory = new MessageTypeFactory();
+    $messageTypeFactory = new PHP55CompatibleMessageTypeFactory();
 
     $sqsClient = SqsClient::factory([
         'version' => 'latest',
@@ -248,4 +249,142 @@ function getMessagesFromSQS($sqsReqion, $sqsAccessKey, $sqsSecretKey, $mailDomai
 
     $log->info("Done processing SQS messages. Added {$addedBans} bans.");
     return $addedBans;
+}
+
+
+/****
+ * COMPLETE BULLSHIT, just to remove array usage in constants so this shit can be used with PHP 5.5
+ */
+class PHP55CompatibleMessageTypeFactory
+{
+    /**
+     * @param string|array $payload json string or array of SNS payload data
+     * @return \markdunphy\SesSnsTypes\Notification\MessageTypeInterface
+     * @throws \markdunphy\SesSnsTypes\Exception\InvalidTypeException
+     * @throws \markdunphy\SesSnsTypes\Exception\MalformedPayloadException
+     */
+    public function create($payload)
+    {
+
+        if (is_string($payload)) {
+            $payload = json_decode($payload, true);
+        }
+
+        if (!is_array($payload)) {
+            throw new \markdunphy\SesSnsTypes\Exception\InvalidTypeException('Argument 1 for NotificationMessageTypeFactory::create must be valid JSON string or array');
+        }
+
+        if (!PHP55CompatiblePayloadValidator::isValid($payload)) {
+            throw new \markdunphy\SesSnsTypes\Exception\MalformedPayloadException('Supplied SNS payload is malformed');
+        }
+
+        $TYPE_CLASSES_BY_STRING = [
+            'bounce' => \markdunphy\SesSnsTypes\Notification\BounceMessage::class,
+            'complaint' => \markdunphy\SesSnsTypes\Notification\ComplaintMessage::class,
+            'delivery' => \markdunphy\SesSnsTypes\Notification\DeliveryMessage::class,
+        ];
+        $class = $TYPE_CLASSES_BY_STRING[strtolower($payload['notificationType'])];
+        return new $class($payload);
+    }
+
+}
+
+/****
+ * COMPLETE BULLSHIT, just to remove array usage in constants so this shit can be used with PHP 5.5
+ */
+class PHP55CompatiblePayloadValidator
+{
+
+
+    /**
+     * @param array $payload
+     * @return bool
+     */
+    public static function isValid(array $payload)
+    {
+        $REQUIRED_TOP_LEVEL_FIELDS = [
+            'notificationType',
+            'mail',
+        ];
+
+        $REQUIRED_MAIL_FIELDS = [
+            'timestamp',
+            'messageId',
+            'source',
+            'sourceArn',
+            'sendingAccountId',
+            'destination',
+        ];
+
+        $REQUIRED_BOUNCE_FIELDS = [
+            'bounceType',
+            'bounceSubType',
+            'bouncedRecipients',
+            'timestamp',
+            'feedbackId',
+        ];
+
+        $REQUIRED_COMPLAINT_FIELDS = [
+            'complainedRecipients',
+            'timestamp',
+            'feedbackId',
+        ];
+
+        $REQUIRED_DELIVERY_FIELDS = [
+            'timestamp',
+            'processingTimeMillis',
+            'recipients',
+            'smtpResponse',
+            'reportingMTA',
+        ];
+
+        $NOTIFICATION_TYPE_VALIDATORS = [
+            'bounce' => $REQUIRED_BOUNCE_FIELDS,
+            'complaint' => $REQUIRED_COMPLAINT_FIELDS,
+            'delivery' => $REQUIRED_DELIVERY_FIELDS,
+        ];
+
+
+        foreach ($REQUIRED_TOP_LEVEL_FIELDS as $field) {
+            if (!isset($payload[$field])) {
+                return false;
+            }
+        }
+
+        $type = strtolower($payload['notificationType']);
+
+        if (!isset($payload[$type])) {
+            return false;
+        }
+
+        if (!static::isObjectValid($payload['mail'], $REQUIRED_MAIL_FIELDS)) {
+            return false;
+        }
+
+        if (!static::isObjectValid($payload[$type], $NOTIFICATION_TYPE_VALIDATORS[$type])) {
+            return false;
+        }
+
+        return true;
+
+    }
+
+    /**
+     * @param array $object
+     * @param $expectedFields
+     * @return bool
+     */
+    private static function isObjectValid(array $object, $expectedFields)
+    {
+
+        foreach ($expectedFields as $field) {
+            if (!isset($object[$field])) {
+                return false;
+            }
+        }
+
+        return true;
+
+    }
+
 }
