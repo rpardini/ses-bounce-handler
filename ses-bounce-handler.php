@@ -1,4 +1,5 @@
 <?php
+const ETC_POSTFIX_TRANSPORT_BANNED = "/etc/postfix/transport_banned";
 require dirname(__FILE__) . '/vendor/autoload.php';
 
 date_default_timezone_set('UTC');
@@ -11,7 +12,6 @@ use Monolog\Logger;
 class BadMessageException extends \Exception
 {
 }
-
 
 $command = new \Commando\Command();
 $command->flag('mode')->alias("runMode")->describedAs("Mode to run in. Could be 'poll', 'postfix', or the default which is 'both'.")->defaultsTo("both");
@@ -45,11 +45,18 @@ if ($runMode == "both" || $runMode == "poll") {
     $newBans = getMessagesFromSQS($sqsReqion, $sqsAccessKey, $sqsSecretKey, $mailDomain, $log, $mongoDbHost, $mongoDbDb, $mongoDbBouncesCollection, $mongoDbBannedCollection);
 }
 
+/**
+ * @return bool
+ */
+function isRunningOnPostfixSystem()
+{
+    return file_exists(ETC_POSTFIX_TRANSPORT_BANNED);
+}
+
 if ($runMode == "both" || $runMode == "postfix") {
     if (($newBans > 0) || $runMode == "postfix") {
         $log->info("Got total {$newBans} bans, let's update postfix ban list.");
-        $postfixDbFilename = "transport_banned";
-        updatePostfixDBFromMongo($log, $mongoDbHost, $mongoDbDb, $mongoDbBannedCollection, $postfixDbFilename);
+        updatePostfixDBFromMongo($log, $mongoDbHost, $mongoDbDb, $mongoDbBannedCollection);
     } else {
         $log->info("No new bans added, not updating postfix.");
     }
@@ -61,7 +68,8 @@ if ($runMode == "both" || $runMode == "postfix") {
  * @param $mongoDbDb string
  * @param $mongoDbBannedCollection string
  */
-function updatePostfixDBFromMongo($log, $mongoDbHost, $mongoDbDb, $mongoDbBannedCollection, $postfixDbFilename) {
+function updatePostfixDBFromMongo($log, $mongoDbHost, $mongoDbDb, $mongoDbBannedCollection)
+{
     $mongoClient = new MongoDB\Client("mongodb://${mongoDbHost}/");
     $bannedCollection = $mongoClient->selectDatabase($mongoDbDb)->selectCollection($mongoDbBannedCollection);
     $cursor = $bannedCollection->find();
@@ -69,18 +77,25 @@ function updatePostfixDBFromMongo($log, $mongoDbHost, $mongoDbDb, $mongoDbBanned
     $records = array();
     foreach ($cursor as $ban) {
         $email = $ban['email'];
+        /** @var \MongoDB\BSON\UTCDatetime $timestamp */
         $timestamp = $ban['timestamp'];
         $reason = $ban['reason'];
-        var_dump($ban);
-        $record = "{$email} discard:BANNED # {$reason} {$timestamp}";
+        $record = "{$email} discard:BANNED {$reason} at {$timestamp->toDateTime()->format('Y-m-d H:i:s')}";
         $records[] = $record;
     }
 
     // Done, write the file.
+    $postfixDbFilename = isRunningOnPostfixSystem() ? ETC_POSTFIX_TRANSPORT_BANNED : dirname(__FILE__) . DIRECTORY_SEPARATOR . "transport_banned";
+    $log->info("Writing banned database to $postfixDbFilename");
     file_put_contents($postfixDbFilename, implode("\n", $records));
 
-    // then call postmap, if available.
-    // then reload postfix to make sure it picks up on the new map.
+    if (isRunningOnPostfixSystem()) {
+        $log->info("Running postmap.");
+        exec("postmap " . ETC_POSTFIX_TRANSPORT_BANNED);
+
+        $log->info("Reloading postfix so it picks up the new transport map.");
+        exec("service postfix reload");
+    }
 }
 
 
@@ -209,6 +224,7 @@ function getMessagesFromSQS($sqsReqion, $sqsAccessKey, $sqsSecretKey, $mailDomai
 
                         // suppose everything went well, remove message from queue.
                         $sqsClient->deleteMessage(array('QueueUrl' => $queueUrl, 'ReceiptHandle' => $receiptHandle));
+                        $log->info("Message deleted from SQS.");
 
                     } catch (\markdunphy\SesSnsTypes\Exception\MalformedPayloadException $e) {
                         // Message is malformed, means it's not something we're expecting here, so delete it.
