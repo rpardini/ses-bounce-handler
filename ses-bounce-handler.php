@@ -92,10 +92,10 @@ function updatePostfixDBFromMongo($log, $mongoDbHost, $mongoDbDb, $mongoDbBanned
 
     if (isRunningOnPostfixSystem()) {
         $log->info("Running postmap.");
-        exec("postmap " . ETC_POSTFIX_TRANSPORT_BANNED);
+        exec("/usr/sbin/postmap " . ETC_POSTFIX_TRANSPORT_BANNED);
 
         $log->info("Reloading postfix so it picks up the new transport map.");
-        exec("service postfix reload");
+        exec("/usr/sbin/service postfix reload");
     }
 }
 
