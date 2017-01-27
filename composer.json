@@ -4,7 +4,6 @@
   "type": "project",
   "require": {
     "aws/aws-sdk-php": "2.8.31",
-    "redisent/redis": "1.10",
     "markdunphy/ses-sns-types": "0.1.4",
     "monolog/monolog": "^1.22",
     "mongodb/mongodb": "^1.1",
