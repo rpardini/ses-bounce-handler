@@ -4,6 +4,13 @@
 
 RELEASE=$(lsb_release -c -s)
 
+if [ "$RELEASE" == "bionic" ]; then
+	echo "Installing for bionic, which uses PHP 7 and has mongodb driver..."
+	apt-get -y install php-mbstring php-cli php-mongodb php-curl php-xml
+	curl -sS https://getcomposer.org/installer | php
+	php composer.phar install --no-plugins --no-scripts
+fi
+
 if [ "$RELEASE" == "xenial" ]; then
 	echo "Installing for xenial, which uses PHP 7..."
 	apt-get -y install php-mbstring php-pear php-cli php-dev libssl-dev libmongo-client-dev
